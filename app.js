@@ -57,6 +57,9 @@ let hoverTimer = null;
 
 // ——— Açık olan açıklama balonunun kaynağı (aç/kapa için) ———
 let activeTooltipEl = null;
+// Balonun aşaması: "simple" (sadece Türkçe anlam) | "rich" (tüm seçenekler)
+// 1. dokunuş → simple, aynı kelimeye 2. dokunuş → rich, 3. dokunuş → kapat
+let tooltipStage = null;
 
 // ——— Örnek Cümle Modu ———
 let isShowingExample = false;
@@ -834,29 +837,34 @@ function attachWordListeners(card) {
         });
     });
 
-    // Diğer tıklanabilir kelimeler - dictionary API ile çeviri
+    // Diğer tıklanabilir kelimeler:
+    // 1. dokunuş → sadece Türkçe anlam, 2. dokunuş → tüm seçenekler, 3. dokunuş → kapat
     card.querySelectorAll('.word-clickable').forEach(span => {
         span.addEventListener('click', function (e) {
             e.stopPropagation();
             clearTimers();
             if (selectMode) { handleSelectTap(this); return; }
-            // Aynı kelimeye tekrar basılırsa açıklamayı kapat (aç/kapa)
-            if (activeTooltipEl === this && document.getElementById('word-tooltip')) {
-                hideTooltip();
-                return;
-            }
             const word = this.dataset.word;
             const lower = this.dataset.lower;
-            showWordMeanings(lower, word, this);
+            if (activeTooltipEl === this && document.getElementById('word-tooltip')) {
+                if (tooltipStage === "simple") {
+                    showWordMeanings(lower, word, this); // 2. dokunuş → tüm anlamlar
+                } else {
+                    hideTooltip(); // 3. dokunuş → kapat
+                }
+                return;
+            }
+            showSimpleWordMeaning(lower, word, this); // 1. dokunuş → sadece Türkçe anlam
         });
 
         span.addEventListener('mouseenter', function () {
             if (selectMode) return;
             clearTimeout(hoverTimer);
             hoverTimer = setTimeout(() => {
+                if (activeTooltipEl === this && document.getElementById('word-tooltip')) return;
                 const word = this.dataset.word;
                 const lower = this.dataset.lower;
-                showWordMeanings(lower, word, this);
+                showSimpleWordMeaning(lower, word, this);
             }, 300);
         });
 
@@ -985,6 +993,7 @@ function showSelectionTooltip(text, anchorEl) {
     tooltip.addEventListener('mouseenter', () => clearTimeout(hideTooltipTimer));
     tooltip.addEventListener('mouseleave', () => scheduleHideTooltip(300));
     activeTooltipEl = anchorEl;
+    tooltipStage = "rich";
 
     (async () => {
         const d = await fetchTurkishDict(text);
@@ -1088,6 +1097,7 @@ function showLoadingTooltip(spanElement, word) {
     tooltip.addEventListener('mouseleave', () => scheduleHideTooltip(300));
 
     activeTooltipEl = spanElement;
+    tooltipStage = "rich";
 }
 
 // =========================================================
@@ -1123,6 +1133,7 @@ function showPhraseMeaning(phrase, spanElement) {
     tooltip.addEventListener('mouseleave', () => scheduleHideTooltip(300));
 
     activeTooltipEl = spanElement;
+    tooltipStage = "rich";
 
     // Kalıbın Türkçe karşılıklarını getir (ana anlam + varsa diğer anlamlar)
     (async () => {
@@ -1215,6 +1226,7 @@ function showKeywordMeanings(word, spanElement) {
 
     // Bu balon artık açık → aç/kapa için kaydet
     activeTooltipEl = spanElement;
+    tooltipStage = "rich";
 
     // Sözlük anlamları tek istektir, hemen başlat;
     // örnekler ve eş anlamlılar sırayla doldurulur (hız sınırını aşmamak için)
@@ -1366,6 +1378,43 @@ async function fillKeywordExamples(word, meanings, tooltip) {
 // =========================================================
 // DİĞER KELİMELER İÇİN DICTIONARY API ÇEVİRİSİ
 // =========================================================
+// ——— 1. dokunuş: sadece Türkçe anlamı gösteren sade balon ———
+async function showSimpleWordMeaning(lower, originalWord, spanElement) {
+    hideTooltip();
+
+    const tooltip = document.createElement("div");
+    tooltip.className = "word-tooltip";
+    tooltip.id = "word-tooltip";
+    tooltip.innerHTML = `<div class="tooltip-header">
+<strong>${originalWord}</strong>
+<button class="tip-copy" title="Kelimeyi kopyala">📋</button>
+</div>
+<div class="tooltip-meanings">
+<div class="meaning-item">
+<div class="meaning-def" data-simpletr>🔄 çevriliyor...</div>
+</div>
+</div>
+<div class="tip-hint">👆 Tüm anlamlar ve örnekler için tekrar dokun</div>`;
+    document.body.appendChild(tooltip);
+    positionTooltip(tooltip, spanElement);
+    wireTooltipCopy(tooltip, originalWord);
+
+    tooltip.addEventListener('mouseenter', () => clearTimeout(hideTooltipTimer));
+    tooltip.addEventListener('mouseleave', () => scheduleHideTooltip(300));
+
+    activeTooltipEl = spanElement;
+    tooltipStage = "simple";
+
+    const d = await fetchTurkishDict(originalWord);
+    if (activeTooltipEl !== spanElement || !document.body.contains(tooltip)) return;
+    const el = tooltip.querySelector('[data-simpletr]');
+    if (el) {
+        el.textContent = d.main
+            ? `🇹🇷 ${d.main}`
+            : 'Çeviriye ulaşılamadı — kelimeye tekrar dokunarak yeniden deneyin';
+    }
+}
+
 async function showWordMeanings(lower, originalWord, spanElement) {
     // Balonu BEKLEMEDEN hemen aç: kullanıcı tıklamasının karşılığını anında görür,
     // çeviri ve tanımlar geldikçe içerik dolar.
@@ -1821,6 +1870,7 @@ function showRichTooltip(spanElement, word, translation, meanings, trDict) {
 
     // Bu balon artık açık → aç/kapa için kaydet
     activeTooltipEl = spanElement;
+    tooltipStage = "rich";
 }
 
 // =========================================================
@@ -1868,6 +1918,7 @@ function hideTooltip() {
         existing.remove();
     }
     activeTooltipEl = null;
+    tooltipStage = null;
 }
 
 // =========================================================
