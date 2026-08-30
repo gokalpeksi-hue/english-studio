@@ -67,7 +67,8 @@ let originalCardIndex = 0;
 
 // ——— Seçim Modu (cümlede kelime grubu seçme) ———
 let selectMode = false;    // 🖍 butonuyla açılıp kapanır
-let selAnchorIdx = null;   // seçimin ilk dokunulan kelimesinin sırası
+let selAnchorIdx = null;   // seçili aralığın başı (dokundukça genişler)
+let selEndIdx = null;      // seçili aralığın sonu (dokundukça genişler)
 
 // =========================================================
 // VERİ YÜKLEME
@@ -781,6 +782,7 @@ function showEnglish() {
     hideTooltip();
     clearTimers();
     selAnchorIdx = null; // kart yeniden çiziliyor → yarım kalan seçim iptal
+    selEndIdx = null;
 
     if (isShowingExample) {
         showOriginalCard();
@@ -907,8 +909,9 @@ function attachWordListeners(card) {
 
 // =========================================================
 // SEÇİM MODU — cümlede kelime / kelime grubu seçme
-// İlk dokunuş başlangıcı, ikinci dokunuş bitişi işaretler;
-// aradaki tüm sözcükler (noktalama dahil) tek parça çevrilir.
+// Her dokunuş seçimi GENİŞLETİR: dokunulan tüm kelimeleri kapsayan
+// aralık vurgulanır ve tek parça çevrilir (2, 3, 5+ kelime fark etmez).
+// Boş alana dokunmak seçimi temizler, yeni seçim baştan başlar.
 // =========================================================
 function getCardTokens() {
     const card = document.getElementById("card");
@@ -917,6 +920,7 @@ function getCardTokens() {
 
 function clearSelection() {
     selAnchorIdx = null;
+    selEndIdx = null;
     getCardTokens().forEach(t => t.classList.remove('word-selected', 'word-sel-anchor'));
 }
 
@@ -930,22 +934,24 @@ function handleSelectTap(el) {
         clearSelection();
         hideTooltip();
         selAnchorIdx = idx;
+        selEndIdx = idx;
         el.classList.add('word-selected', 'word-sel-anchor');
-        showToast("Şimdi son kelimeye dokun · tek kelime için aynısına tekrar dokun");
+        showToast("Kelimelere dokunmaya devam et: seçim genişler · bitirince boş alana dokun");
         return;
     }
 
-    // İkinci dokunuş → aralığı vurgula ve çevir
-    const start = Math.min(selAnchorIdx, idx);
-    const end = Math.max(selAnchorIdx, idx);
-    selAnchorIdx = null;
+    // Sonraki her dokunuş → aralığı yeni kelimeyi kapsayacak şekilde genişlet
+    selAnchorIdx = Math.min(selAnchorIdx, idx);
+    selEndIdx = Math.max(selEndIdx, idx);
+    const start = selAnchorIdx;
+    const end = selEndIdx;
 
     tokens.forEach((t, i) => {
         t.classList.toggle('word-selected', i >= start && i <= end);
         t.classList.remove('word-sel-anchor');
     });
 
-    // Tek kelime seçildi → normal zengin balonu göster
+    // Hâlâ tek kelime seçili (aynı kelimeye 2. dokunuş) → zengin balonu göster
     if (start === end) {
         const t = tokens[start];
         if (t.classList.contains('word-phrase')) {
@@ -1161,6 +1167,7 @@ function showTurkish() {
     hideTooltip();
     clearTimers();
     selAnchorIdx = null;
+    selEndIdx = null;
 
     const cardData = cards[currentIndex];
     const turkishText = cardData.turkish || '';
@@ -1881,6 +1888,7 @@ function showExampleInCard(exampleSentence, word, turkishTranslation, ctxIndex) 
     isShowingExample = true;
     originalCardIndex = currentIndex;
     selAnchorIdx = null;
+    selEndIdx = null;
     const card = document.getElementById("card");
 
     // Kalıplar tek parça, geri kalanı kelime kelime; eşleşen kelime vurgulanır
