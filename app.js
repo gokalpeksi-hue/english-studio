@@ -30,22 +30,25 @@ const TR_CACHE_MAX = 1500; // kayıt sınırı (localStorage şişmesin)
 })();
 
 let trCacheSaveTimer = null;
+function writeTrCacheNow() {
+    clearTimeout(trCacheSaveTimer);
+    try {
+        const phrases = {};
+        const dict = {};
+        let n = 0;
+        for (const k in phraseCache) {
+            if (typeof phraseCache[k] === "string" && n < TR_CACHE_MAX) { phrases[k] = phraseCache[k]; n++; }
+        }
+        for (const k in dictCache) {
+            if (dictCache[k] && dictCache[k].data && n < TR_CACHE_MAX) { dict[k] = dictCache[k].data; n++; }
+        }
+        localStorage.setItem(TR_CACHE_KEY, JSON.stringify({ phrases, dict }));
+    } catch (_) {} // depo doluysa sessizce vazgeç (bellek içi önbellek çalışmaya devam eder)
+}
+
 function saveTrCache() {
     clearTimeout(trCacheSaveTimer);
-    trCacheSaveTimer = setTimeout(() => {
-        try {
-            const phrases = {};
-            const dict = {};
-            let n = 0;
-            for (const k in phraseCache) {
-                if (typeof phraseCache[k] === "string" && n < TR_CACHE_MAX) { phrases[k] = phraseCache[k]; n++; }
-            }
-            for (const k in dictCache) {
-                if (dictCache[k] && dictCache[k].data && n < TR_CACHE_MAX) { dict[k] = dictCache[k].data; n++; }
-            }
-            localStorage.setItem(TR_CACHE_KEY, JSON.stringify({ phrases, dict }));
-        } catch (_) {} // depo doluysa sessizce vazgeç (bellek içi önbellek çalışmaya devam eder)
-    }, 800);
+    trCacheSaveTimer = setTimeout(writeTrCacheNow, 800);
 }
 
 // ——— Zamanlayıcılar ———
@@ -115,6 +118,7 @@ async function loadCards() {
                         ? `✅ ${cards.length} kelime (kayıtlı): ${savedName}`
                         : `✅ ${cards.length} kayıtlı kelime yüklendi`;
                 }
+                prefetchTranslations(); // eksik çevirileri arka planda indir
                 return;
             }
         } catch (err) {
@@ -126,6 +130,7 @@ async function loadCards() {
     cards = await response.json();
     restoreSavedIndex();
     loadVoices();
+    prefetchTranslations(); // eksik çevirileri arka planda indir
 }
 
 function deduplicateCards(arr) {
@@ -183,6 +188,7 @@ document.getElementById("file-input").addEventListener("change", function (e) {
                 ? ` (${uniqueCount - cards.length} tekrar temizlendi)`
                 : "";
             fileStatus.textContent = `✅ ${cards.length} benzersiz kelime yüklendi${dedupMsg}: ${file.name}`;
+            prefetchTranslations(); // yeni dosyanın çevirilerini arka planda indir
         } catch (err) {
             fileStatus.textContent = "❌ Dosya okunamadı: " + err.message;
         }
@@ -209,6 +215,7 @@ if (resetBtn) {
         showEnglish();
         const fileStatus = document.getElementById("file-status");
         if (fileStatus) fileStatus.textContent = "Henüz dosya yüklenmedi";
+        prefetchTranslations(); // varsayılan listenin çevirilerini arka planda indir
     });
 }
 
@@ -960,6 +967,7 @@ function showSelectionTooltip(text, anchorEl) {
     tooltip.innerHTML = `<div class="tooltip-header">
 <strong>${text}</strong>
 <span class="tooltip-tr">🖍 seçim</span>
+<button class="tip-copy" title="Seçimi kopyala">📋</button>
 </div>
 <div class="tooltip-meanings">
 <div class="meaning-group">
@@ -972,6 +980,7 @@ function showSelectionTooltip(text, anchorEl) {
 </div>`;
     document.body.appendChild(tooltip);
     positionTooltip(tooltip, anchorEl);
+    wireTooltipCopy(tooltip, text);
 
     tooltip.addEventListener('mouseenter', () => clearTimeout(hideTooltipTimer));
     tooltip.addEventListener('mouseleave', () => scheduleHideTooltip(300));
@@ -1034,6 +1043,31 @@ function positionTooltip(tooltip, spanElement) {
     });
 }
 
+// ——— Balondaki 📋 butonu: sadece balondaki kelimeyi/ifadeyi panoya kopyalar ———
+function copyTextToClipboard(text, btn) {
+    const flash = ok => {
+        if (!btn) return;
+        btn.textContent = ok ? "✅" : "❌";
+        setTimeout(() => { btn.textContent = "📋"; }, 1200);
+    };
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(text)
+            .then(() => flash(true))
+            .catch(() => flash(fallbackCopy(text)));
+    } else {
+        flash(fallbackCopy(text));
+    }
+}
+
+function wireTooltipCopy(tooltip, text) {
+    const btn = tooltip.querySelector('.tip-copy');
+    if (!btn) return;
+    btn.addEventListener('click', function (e) {
+        e.stopPropagation();
+        copyTextToClipboard(text, btn);
+    });
+}
+
 // ——— Tıklanır tıklanmaz görünen "yükleniyor" balonu ———
 function showLoadingTooltip(spanElement, word) {
     hideTooltip();
@@ -1044,9 +1078,11 @@ function showLoadingTooltip(spanElement, word) {
     tooltip.innerHTML = `<div class="tooltip-header">
 <strong>${word}</strong>
 <span class="tooltip-tr loading">🔄 çevriliyor...</span>
+<button class="tip-copy" title="Kelimeyi kopyala">📋</button>
 </div>`;
     document.body.appendChild(tooltip);
     positionTooltip(tooltip, spanElement);
+    wireTooltipCopy(tooltip, word);
 
     tooltip.addEventListener('mouseenter', () => clearTimeout(hideTooltipTimer));
     tooltip.addEventListener('mouseleave', () => scheduleHideTooltip(300));
@@ -1067,6 +1103,7 @@ function showPhraseMeaning(phrase, spanElement) {
     tooltip.innerHTML = `<div class="tooltip-header">
 <strong>${phrase}</strong>
 <span class="tooltip-tr">🧩 kalıp</span>
+<button class="tip-copy" title="Kalıbı kopyala">📋</button>
 </div>
 <div class="tooltip-meanings">
 <div class="meaning-group">
@@ -1080,6 +1117,7 @@ function showPhraseMeaning(phrase, spanElement) {
 
     document.body.appendChild(tooltip);
     positionTooltip(tooltip, spanElement);
+    wireTooltipCopy(tooltip, phrase);
 
     tooltip.addEventListener('mouseenter', () => clearTimeout(hideTooltipTimer));
     tooltip.addEventListener('mouseleave', () => scheduleHideTooltip(300));
@@ -1136,6 +1174,7 @@ function showKeywordMeanings(word, spanElement) {
     let html = `<div class="tooltip-header">
 <strong>${word}</strong>
 <span class="tooltip-tr">🇹🇷 ${meanings.length} anlam</span>
+<button class="tip-copy" title="Kelimeyi kopyala">📋</button>
 </div>`;
 
     // ——— Her Türkçe anlam + İngilizce örnek cümle + Türkçe çevirisi ———
@@ -1168,6 +1207,7 @@ function showKeywordMeanings(word, spanElement) {
     tooltip.innerHTML = html;
     document.body.appendChild(tooltip);
     positionTooltip(tooltip, spanElement);
+    wireTooltipCopy(tooltip, word);
 
     // Tooltip fare olayları
     tooltip.addEventListener('mouseenter', () => clearTimeout(hideTooltipTimer));
@@ -1479,6 +1519,89 @@ async function fetchTurkishDict(text) {
     return promise;
 }
 
+// =========================================================
+// ARKA PLANDA TOPLU ÇEVİRİ İNDİRME (ÖN YÜKLEME)
+// Excel yüklendiğinde / uygulama açıldığında kartlardaki tüm kelimelerin
+// Türkçe karşılıkları yavaş yavaş indirilip kalıcı hafızaya yazılır.
+// Böylece kelimelere dokunulduğunda internet olmasa bile anlam anında gelir.
+// =========================================================
+let prefetchToken = 0; // yeni dosya yüklenince önceki tur iptal edilsin diye
+
+function collectPrefetchWords() {
+    const seen = new Set();
+    const words = [];
+    for (const c of cards) {
+        const s = (c.sentence || c.english || "") + " " + (c.word || "");
+        const tokens = s.match(/[a-zA-Z][a-zA-Z'-]*/g) || [];
+        for (const t of tokens) {
+            const key = t.toLowerCase();
+            if (key.length < 2 || seen.has(key)) continue;
+            seen.add(key);
+            if (PHRASE_TR[key]) continue;                       // gömülü sözlükte zaten var
+            if (dictCache[key] && dictCache[key].data) continue; // kalıcı hafızada zaten var
+            words.push(key);
+        }
+    }
+    return words;
+}
+
+async function prefetchTranslations() {
+    const myToken = ++prefetchToken;
+
+    // Açılış/yükleme telaşı geçsin diye kısa bir gecikmeyle başla
+    await new Promise(r => setTimeout(r, 3000));
+    if (myToken !== prefetchToken) return;
+
+    const words = collectPrefetchWords();
+    if (words.length === 0) return;
+
+    const fileStatus = document.getElementById("file-status");
+    const originalStatus = fileStatus ? fileStatus.textContent : "";
+    let done = 0;
+    let failStreak = 0;
+
+    for (const w of words) {
+        if (myToken !== prefetchToken) return; // yeni dosya yüklendi → bu turu bırak
+        try {
+            const d = await fetchTurkishDict(w);
+            if (d.main || d.groups.length > 0 || d.alts.length > 0) {
+                failStreak = 0;
+            } else {
+                failStreak++;
+            }
+        } catch (_) {
+            failStreak++;
+        }
+        done++;
+
+        if (fileStatus && done % 10 === 0) {
+            fileStatus.textContent = `📥 Çeviriler hazırlanıyor: ${done}/${words.length}`;
+        }
+        if (done % 20 === 0) writeTrCacheNow(); // ara ara kalıcı hafızaya yaz
+
+        // Servis ulaşılamıyorsa boşuna zorlamayı bırak; kalan kelimeler
+        // bir sonraki açılışta (ya da yeni dosya yüklenince) denenir
+        if (failStreak >= 8) break;
+
+        // Ücretsiz servislerin hız sınırına takılmamak için istekler arasında bekle
+        await new Promise(r => setTimeout(r, 350));
+    }
+
+    writeTrCacheNow();
+    if (myToken !== prefetchToken || !fileStatus) return;
+
+    if (failStreak >= 8) {
+        fileStatus.textContent = originalStatus;
+    } else {
+        fileStatus.textContent = "✅ Çeviriler indirildi — kelimeler çevrimdışı da açılır";
+        setTimeout(() => {
+            if (myToken === prefetchToken && fileStatus.textContent.startsWith("✅ Çeviriler")) {
+                fileStatus.textContent = originalStatus;
+            }
+        }, 6000);
+    }
+}
+
 // ——— Sözlükteki ek karşılıkları tek listeye indir (ana karşılık hariç) ———
 function dictExtraTerms(d) {
     const seen = new Set([(d.main || "").toLowerCase()]);
@@ -1576,6 +1699,7 @@ function showRichTooltip(spanElement, word, translation, meanings, trDict) {
     } else if (translation === "🔄") {
         headerHtml += `<span class="tooltip-tr loading">🔄 çeviriliyor...</span>`;
     }
+    headerHtml += `<button class="tip-copy" title="Kelimeyi kopyala">📋</button>`;
     headerHtml += `</div>`;
 
     let exIndex = 0;
@@ -1644,6 +1768,7 @@ function showRichTooltip(spanElement, word, translation, meanings, trDict) {
     tooltip.innerHTML = headerHtml + meaningsHtml;
     document.body.appendChild(tooltip);
     positionTooltip(tooltip, spanElement);
+    wireTooltipCopy(tooltip, word);
 
     // Tanımların ve örneklerin Türkçesini SIRAYLA çevir (paralel istekler ücretsiz
     // çeviri servisinde hız sınırına takıldığı için teker teker yapılır)
