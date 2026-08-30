@@ -967,6 +967,7 @@ function showSelectionTooltip(text, anchorEl) {
     tooltip.innerHTML = `<div class="tooltip-header">
 <strong>${text}</strong>
 <span class="tooltip-tr">🖍 seçim</span>
+<button class="tip-copy" title="Seçimi kopyala">📋</button>
 </div>
 <div class="tooltip-meanings">
 <div class="meaning-group">
@@ -979,6 +980,7 @@ function showSelectionTooltip(text, anchorEl) {
 </div>`;
     document.body.appendChild(tooltip);
     positionTooltip(tooltip, anchorEl);
+    wireTooltipCopy(tooltip, text);
 
     tooltip.addEventListener('mouseenter', () => clearTimeout(hideTooltipTimer));
     tooltip.addEventListener('mouseleave', () => scheduleHideTooltip(300));
@@ -1041,6 +1043,31 @@ function positionTooltip(tooltip, spanElement) {
     });
 }
 
+// ——— Balondaki 📋 butonu: sadece balondaki kelimeyi/ifadeyi panoya kopyalar ———
+function copyTextToClipboard(text, btn) {
+    const flash = ok => {
+        if (!btn) return;
+        btn.textContent = ok ? "✅" : "❌";
+        setTimeout(() => { btn.textContent = "📋"; }, 1200);
+    };
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(text)
+            .then(() => flash(true))
+            .catch(() => flash(fallbackCopy(text)));
+    } else {
+        flash(fallbackCopy(text));
+    }
+}
+
+function wireTooltipCopy(tooltip, text) {
+    const btn = tooltip.querySelector('.tip-copy');
+    if (!btn) return;
+    btn.addEventListener('click', function (e) {
+        e.stopPropagation();
+        copyTextToClipboard(text, btn);
+    });
+}
+
 // ——— Tıklanır tıklanmaz görünen "yükleniyor" balonu ———
 function showLoadingTooltip(spanElement, word) {
     hideTooltip();
@@ -1051,9 +1078,11 @@ function showLoadingTooltip(spanElement, word) {
     tooltip.innerHTML = `<div class="tooltip-header">
 <strong>${word}</strong>
 <span class="tooltip-tr loading">🔄 çevriliyor...</span>
+<button class="tip-copy" title="Kelimeyi kopyala">📋</button>
 </div>`;
     document.body.appendChild(tooltip);
     positionTooltip(tooltip, spanElement);
+    wireTooltipCopy(tooltip, word);
 
     tooltip.addEventListener('mouseenter', () => clearTimeout(hideTooltipTimer));
     tooltip.addEventListener('mouseleave', () => scheduleHideTooltip(300));
@@ -1074,6 +1103,7 @@ function showPhraseMeaning(phrase, spanElement) {
     tooltip.innerHTML = `<div class="tooltip-header">
 <strong>${phrase}</strong>
 <span class="tooltip-tr">🧩 kalıp</span>
+<button class="tip-copy" title="Kalıbı kopyala">📋</button>
 </div>
 <div class="tooltip-meanings">
 <div class="meaning-group">
@@ -1087,6 +1117,7 @@ function showPhraseMeaning(phrase, spanElement) {
 
     document.body.appendChild(tooltip);
     positionTooltip(tooltip, spanElement);
+    wireTooltipCopy(tooltip, phrase);
 
     tooltip.addEventListener('mouseenter', () => clearTimeout(hideTooltipTimer));
     tooltip.addEventListener('mouseleave', () => scheduleHideTooltip(300));
@@ -1143,6 +1174,7 @@ function showKeywordMeanings(word, spanElement) {
     let html = `<div class="tooltip-header">
 <strong>${word}</strong>
 <span class="tooltip-tr">🇹🇷 ${meanings.length} anlam</span>
+<button class="tip-copy" title="Kelimeyi kopyala">📋</button>
 </div>`;
 
     // ——— Her Türkçe anlam + İngilizce örnek cümle + Türkçe çevirisi ———
@@ -1175,6 +1207,7 @@ function showKeywordMeanings(word, spanElement) {
     tooltip.innerHTML = html;
     document.body.appendChild(tooltip);
     positionTooltip(tooltip, spanElement);
+    wireTooltipCopy(tooltip, word);
 
     // Tooltip fare olayları
     tooltip.addEventListener('mouseenter', () => clearTimeout(hideTooltipTimer));
@@ -1666,6 +1699,7 @@ function showRichTooltip(spanElement, word, translation, meanings, trDict) {
     } else if (translation === "🔄") {
         headerHtml += `<span class="tooltip-tr loading">🔄 çeviriliyor...</span>`;
     }
+    headerHtml += `<button class="tip-copy" title="Kelimeyi kopyala">📋</button>`;
     headerHtml += `</div>`;
 
     let exIndex = 0;
@@ -1734,6 +1768,7 @@ function showRichTooltip(spanElement, word, translation, meanings, trDict) {
     tooltip.innerHTML = headerHtml + meaningsHtml;
     document.body.appendChild(tooltip);
     positionTooltip(tooltip, spanElement);
+    wireTooltipCopy(tooltip, word);
 
     // Tanımların ve örneklerin Türkçesini SIRAYLA çevir (paralel istekler ücretsiz
     // çeviri servisinde hız sınırına takıldığı için teker teker yapılır)

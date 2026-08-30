@@ -909,3 +909,36 @@ body {
     opacity: 1;
     transform: translateX(-50%) translateY(0);
 }
+
+/* =============================================
+   BALON İÇİ KOPYALAMA + YERLEŞİK SEÇİMİ KAPATMA
+   ============================================= */
+/* Kart üzerinde tarayıcının uzun basma metin seçimi kapalı:
+   kopyalama artık balonlardaki 📋 butonuyla yapılır (karışık seçim biter) */
+.card-container {
+    -webkit-user-select: none;
+    user-select: none;
+    -webkit-touch-callout: none;
+}
+
+/* Balon başlığındaki 📋 kopyala butonu */
+.tip-copy {
+    margin-left: auto;
+    background: rgba(255, 255, 255, 0.1);
+    color: #f0f0f0;
+    border: none;
+    border-radius: 8px;
+    padding: 5px 12px;
+    font-size: 15px;
+    line-height: 1;
+    cursor: pointer;
+    transition: background 0.15s, transform 0.1s;
+}
+
+.tip-copy:hover {
+    background: rgba(255, 255, 255, 0.22);
+}
+
+.tip-copy:active {
+    transform: scale(0.9);
+}
