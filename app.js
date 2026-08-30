@@ -10,6 +10,44 @@ const dictCache = {};   // İngilizce → {main, groups, alts} Türkçe sözlük
 const defCache = {};    // İngilizce → sözlük tanımları
 const phraseCache = {}; // İngilizce cümle → Türkçe çeviri (örnek cümleler için)
 
+// ——— Başarılı çevirileri kalıcı hafızada tut ———
+// Bir kez çevrilen kelime/cümle, uygulama yeniden açıldığında da internetsiz gösterilir.
+const TR_CACHE_KEY = "kelimeKarti_trCache_v1";
+const TR_CACHE_MAX = 1500; // kayıt sınırı (localStorage şişmesin)
+
+(function loadTrCache() {
+    try {
+        const saved = JSON.parse(localStorage.getItem(TR_CACHE_KEY));
+        if (saved && typeof saved === "object") {
+            if (saved.phrases) Object.assign(phraseCache, saved.phrases);
+            if (saved.dict) {
+                for (const k in saved.dict) {
+                    dictCache[k] = { data: saved.dict[k] };
+                }
+            }
+        }
+    } catch (_) {}
+})();
+
+let trCacheSaveTimer = null;
+function saveTrCache() {
+    clearTimeout(trCacheSaveTimer);
+    trCacheSaveTimer = setTimeout(() => {
+        try {
+            const phrases = {};
+            const dict = {};
+            let n = 0;
+            for (const k in phraseCache) {
+                if (typeof phraseCache[k] === "string" && n < TR_CACHE_MAX) { phrases[k] = phraseCache[k]; n++; }
+            }
+            for (const k in dictCache) {
+                if (dictCache[k] && dictCache[k].data && n < TR_CACHE_MAX) { dict[k] = dictCache[k].data; n++; }
+            }
+            localStorage.setItem(TR_CACHE_KEY, JSON.stringify({ phrases, dict }));
+        } catch (_) {} // depo doluysa sessizce vazgeç (bellek içi önbellek çalışmaya devam eder)
+    }, 800);
+}
+
 // ——— Zamanlayıcılar ———
 let hideTooltipTimer = null;
 let hoverTimer = null;
@@ -359,6 +397,315 @@ const PHRASES = [
     "tone down", "track down", "use up", "weigh in", "win over",
     "zoom in", "zoom out"
 ];
+
+// =========================================================
+// KALIPLARIN GÖMÜLÜ TÜRKÇE SÖZLÜĞÜ
+// İnternet/çeviri servisi olmadan da kalıp anlamları anında gösterilir.
+// Birden çok anlam virgül/noktalı virgülle ayrılır.
+// =========================================================
+const PHRASE_TR = {
+    // Bağlaç / edat kalıpları
+    "as long as": "-dığı sürece, yeter ki",
+    "as soon as": "-er -mez, olur olmaz",
+    "as well as": "-nın yanı sıra, ayrıca, -e ek olarak",
+    "as far as": "-e kadar; -e gelince, bildiği kadarıyla",
+    "as much as": "-dığı kadar, o kadar",
+    "as if": "sanki, -mış gibi",
+    "as though": "sanki, -mış gibi",
+    "as a result of": "-in sonucunda, -den dolayı",
+    "as a result": "sonuç olarak, bunun sonucunda",
+    "as opposed to": "-in aksine, -e karşılık",
+    "in case of": "durumunda, halinde",
+    "in case": "ihtimaline karşı, belki diye",
+    "in order to": "-mek için, amacıyla",
+    "in order for": "-in ... yapabilmesi için",
+    "in spite of": "-e rağmen, -e karşın",
+    "in terms of": "açısından, bakımından",
+    "in addition to": "-e ek olarak, -in yanı sıra",
+    "in addition": "ayrıca, ek olarak, üstelik",
+    "in front of": "-in önünde",
+    "in favor of": "-in lehine, -den yana",
+    "in favour of": "-in lehine, -den yana",
+    "in charge of": "-den sorumlu, -in başında",
+    "in accordance with": "-e uygun olarak, uyarınca",
+    "in advance": "önceden, peşinen",
+    "in line with": "-e paralel olarak, -le uyumlu",
+    "in light of": "ışığında, göz önüne alındığında",
+    "in the long run": "uzun vadede, eninde sonunda",
+    "in the short term": "kısa vadede",
+    "in the event of": "olması halinde, durumunda",
+    "in response to": "-e yanıt olarak, karşılık olarak",
+    "in contrast to": "-in aksine, -e kıyasla",
+    "instead of": "yerine, -ecek yerde",
+    "the case for": "lehine gerekçeler, -i savunan görüş",
+    "the case against": "aleyhine gerekçeler, -e karşı görüş",
+    "due to": "-den dolayı, nedeniyle, yüzünden",
+    "owing to": "nedeniyle, -den ötürü",
+    "thanks to": "sayesinde",
+    "according to": "-e göre",
+    "regardless of": "-e bakılmaksızın, ne olursa olsun",
+    "apart from": "-den başka, dışında; bir yana",
+    "aside from": "-in dışında, -den başka",
+    "rather than": "yerine, -mektense",
+    "other than": "-den başka, dışında",
+    "such as": "gibi, örneğin",
+    "so that": "-sın diye, böylece",
+    "so as to": "-mek için, amacıyla",
+    "even though": "-e rağmen, her ne kadar",
+    "even if": "-se bile",
+    "for the sake of": "hatırına, uğruna, iyiliği için",
+    "on behalf of": "adına, namına",
+    "on account of": "yüzünden, nedeniyle",
+    "with respect to": "-e ilişkin, açısından",
+    "with regard to": "-e gelince, ile ilgili olarak",
+    "with regards to": "-e gelince, ile ilgili olarak",
+    "by means of": "aracılığıyla, vasıtasıyla",
+    "ahead of": "-den önce, -in önünde",
+    "prior to": "-den önce, öncesinde",
+    "subject to": "-e tabi, -e bağlı, koşuluyla",
+    "based on": "-e dayalı, temel alınarak, -e dayanarak",
+    "up to date": "güncel, çağdaş",
+    "more or less": "aşağı yukarı, az çok",
+    "at least": "en azından, hiç değilse",
+    "at most": "en fazla, olsa olsa",
+    "at first": "ilk başta, önceleri",
+    "at last": "sonunda, nihayet",
+    "no longer": "artık ... değil, bundan böyle ... -me-",
+    "as of": "itibarıyla, -den itibaren",
+    // Fiil kalıpları (phrasal / collocation)
+    "look forward to": "dört gözle beklemek, sabırsızlıkla beklemek",
+    "take into account": "hesaba katmak, göz önünde bulundurmak",
+    "take advantage of": "-den yararlanmak; istismar etmek",
+    "give rise to": "yol açmak, neden olmak, doğurmak",
+    "come up with": "(fikir/çözüm) bulmak, ortaya atmak",
+    "carry out": "yürütmek, gerçekleştirmek, yerine getirmek",
+    "point out": "belirtmek, işaret etmek, dikkat çekmek",
+    "set up": "kurmak, düzenlemek, ayarlamak",
+    "follow up": "takip etmek, izlemek, devamını getirmek",
+    "break down": "bozulmak; ayrıştırmak; sinir krizi geçirmek",
+    "deal with": "ilgilenmek, başa çıkmak, ele almak",
+    "rely on": "güvenmek, bel bağlamak",
+    "depend on": "-e bağlı olmak; güvenmek",
+    "result in": "-le sonuçlanmak, yol açmak",
+    "lead to": "-e yol açmak, neden olmak",
+    "focus on": "odaklanmak, yoğunlaşmak",
+    "go through": "yaşamak, geçirmek; gözden geçirmek",
+    "bring about": "meydana getirmek, yol açmak",
+    "phase out": "aşamalı olarak kaldırmak, kademeli sonlandırmak",
+    "roll out": "piyasaya sürmek, yaygınlaştırmak",
+    "scale up": "ölçeği büyütmek, artırmak",
+    "ramp up": "hızla artırmak, yükseltmek",
+    "follow through": "sonuna kadar götürmek, tamamlamak",
+    "keep up with": "ayak uydurmak, geride kalmamak",
+    "catch up with": "yetişmek, arayı kapatmak",
+    "make up for": "telafi etmek, karşılamak",
+    "account for": "açıklamak; (pay) oluşturmak",
+    "due diligence": "durum tespiti, özenli inceleme",
+    "supply chain": "tedarik zinciri",
+    "value chain": "değer zinciri",
+    "market share": "pazar payı",
+    "go to market": "pazara açılma, pazara giriş",
+    "first mover": "ilk hamleyi yapan, öncü",
+    "first-mover advantage": "ilk hamle avantajı, öncü olma avantajı",
+    "first mover advantage": "ilk hamle avantajı, öncü olma avantajı",
+    // Üç kelimeli öbek fiiller
+    "get along with": "iyi geçinmek, anlaşmak",
+    "come up against": "(zorlukla) karşılaşmak",
+    "put up with": "katlanmak, tahammül etmek",
+    "look down on": "küçümsemek, hor görmek",
+    "look up to": "saygı duymak, örnek almak",
+    "get away with": "yanına kâr kalmak, paçayı kurtarmak",
+    "run out of": "-i bitirmek, -i tüketmek",
+    "cut down on": "azaltmak, kısmak",
+    "drop out of": "yarıda bırakmak, (okulu) terk etmek",
+    "stand up for": "savunmak, arkasında durmak",
+    "face up to": "yüzleşmek, göğüs germek",
+    "live up to": "(beklentiyi) karşılamak, layık olmak",
+    "get on with": "devam etmek; iyi geçinmek",
+    "go back on": "sözünden dönmek, caymak",
+    "fall back on": "-e başvurmak, yedeğine sarılmak",
+    "keep away from": "uzak durmak, yaklaşmamak",
+    "look out for": "kollamak, gözetmek; dikkat etmek",
+    "watch out for": "dikkat etmek, gözünü açmak",
+    "come down with": "(hastalığa) yakalanmak",
+    // İki kelimeli öbek fiiller
+    "roll up": "sarmak, kıvırmak; toplamak",
+    "roll back": "geri çekmek, (fiyat) düşürmek",
+    "roll over": "yuvarlanmak; devretmek",
+    "back up": "yedeklemek; desteklemek",
+    "back down": "geri adım atmak, vazgeçmek",
+    "break up": "ayrılmak; dağıtmak, dağılmak",
+    "break in": "zorla girmek; alıştırmak",
+    "break out": "patlak vermek; kaçmak",
+    "break off": "koparmak; aniden kesmek",
+    "break through": "yarıp geçmek; çığır açmak",
+    "bring up": "gündeme getirmek; (çocuk) yetiştirmek",
+    "bring in": "getirmek, kazandırmak",
+    "bring out": "ortaya çıkarmak; piyasaya çıkarmak",
+    "bring down": "düşürmek, indirmek, devirmek",
+    "bring back": "geri getirmek; hatırlatmak",
+    "call off": "iptal etmek, vazgeçmek",
+    "call up": "telefon etmek; askere çağırmak",
+    "call back": "geri aramak",
+    "carry on": "devam etmek, sürdürmek",
+    "check in": "giriş yapmak, kayıt yaptırmak",
+    "check out": "çıkış yapmak; incelemek, göz atmak",
+    "come across": "rastlamak, denk gelmek; izlenim bırakmak",
+    "come back": "geri dönmek",
+    "come in": "girmek, içeri gelmek",
+    "come out": "ortaya çıkmak; yayımlanmak",
+    "come over": "uğramak, ziyarete gelmek",
+    "come along": "birlikte gelmek; ilerlemek",
+    "cut off": "kesmek, ayırmak; sözünü kesmek",
+    "cut out": "kesip çıkarmak; bırakmak",
+    "cut back": "kısmak, azaltmak",
+    "drop off": "(birini) bırakmak; azalmak; uyuyakalmak",
+    "drop out": "(okulu) bırakmak, çekilmek",
+    "end up": "sonunda ... olmak, -le sonuçlanmak",
+    "fall apart": "dağılmak, parçalanmak",
+    "fall behind": "geri kalmak, geride kalmak",
+    "fill in": "(form) doldurmak; yerine bakmak",
+    "fill out": "(form) doldurmak",
+    "fill up": "doldurmak, dolmak",
+    "find out": "öğrenmek, ortaya çıkarmak",
+    "get up": "kalkmak, yataktan kalkmak",
+    "get back": "geri dönmek; geri almak",
+    "get in": "girmek, (araca) binmek",
+    "get off": "inmek; kurtulmak",
+    "get on": "binmek; ilerlemek, iyi gitmek",
+    "get out": "çıkmak, dışarı çıkmak",
+    "get over": "atlatmak, üstesinden gelmek",
+    "get through": "tamamlamak, atlatmak; (telefonda) ulaşmak",
+    "give up": "vazgeçmek, bırakmak, pes etmek",
+    "give in": "boyun eğmek, pes etmek",
+    "give away": "bağışlamak; ele vermek",
+    "give back": "geri vermek, iade etmek",
+    "go ahead": "devam etmek; önden gitmek; buyurun",
+    "go on": "devam etmek; olmak, yaşanmak",
+    "go off": "patlamak; (alarm) çalmak; bozulmak",
+    "go out": "dışarı çıkmak; sönmek",
+    "go over": "gözden geçirmek, üzerinden geçmek",
+    "grow up": "büyümek, yetişkin olmak",
+    "hand in": "teslim etmek, vermek",
+    "hand out": "dağıtmak",
+    "hand over": "devretmek, teslim etmek",
+    "hang on": "beklemek; sıkı tutunmak",
+    "hang up": "telefonu kapatmak; asmak",
+    "hold on": "beklemek; tutunmak",
+    "hold back": "geride tutmak, kendini tutmak",
+    "hold up": "geciktirmek; dayanmak; soymak",
+    "keep on": "devam etmek, sürdürmek",
+    "keep up": "sürdürmek; ayak uydurmak",
+    "lay off": "işten çıkarmak",
+    "let down": "hayal kırıklığına uğratmak, yüzüstü bırakmak",
+    "log in": "oturum açmak, giriş yapmak",
+    "log out": "oturumu kapatmak, çıkış yapmak",
+    "look after": "bakmak, ilgilenmek",
+    "look into": "araştırmak, incelemek",
+    "look up": "(sözlükten) bakmak; iyiye gitmek",
+    "make out": "seçebilmek, güçlükle anlamak",
+    "make up": "uydurmak; barışmak; oluşturmak",
+    "move on": "yoluna devam etmek, (yeni konuya) geçmek",
+    "pass away": "vefat etmek, hayatını kaybetmek",
+    "pass out": "bayılmak",
+    "pay off": "karşılığını vermek; (borcu) kapatmak",
+    "pay back": "geri ödemek",
+    "pick up": "almak, yerden kaldırmak; (birini) almak; öğrenivermek",
+    "pick out": "seçmek, ayırt etmek",
+    "pull off": "(zor işi) başarmak",
+    "pull out": "çekilmek, vazgeçmek",
+    "pull over": "(aracı) kenara çekmek",
+    "put off": "ertelemek",
+    "put on": "giymek; (kilo) almak",
+    "put out": "söndürmek",
+    "put up": "asmak; barındırmak; (fiyat) artırmak",
+    "run into": "rastlamak; çarpmak",
+    "run out": "tükenmek, bitmek",
+    "run over": "(araçla) ezmek; üzerinden geçmek",
+    "set off": "yola çıkmak; tetiklemek",
+    "set out": "yola koyulmak; ortaya koymak",
+    "set aside": "ayırmak, bir kenara koymak",
+    "settle down": "yerleşmek, durulmak",
+    "show up": "ortaya çıkmak, gelmek",
+    "shut down": "kapatmak, kapanmak",
+    "sign in": "giriş yapmak, oturum açmak",
+    "sign up": "kaydolmak, üye olmak",
+    "sign out": "çıkış yapmak, oturumu kapatmak",
+    "slow down": "yavaşlamak, yavaşlatmak",
+    "sort out": "halletmek, çözmek; ayıklamak",
+    "speed up": "hızlandırmak, hızlanmak",
+    "stand out": "öne çıkmak, göze çarpmak",
+    "stand by": "hazır beklemek; arkasında durmak",
+    "stay up": "geç saate kadar uyanık kalmak",
+    "step down": "istifa etmek, görevi bırakmak",
+    "switch on": "(cihazı) açmak",
+    "switch off": "(cihazı) kapatmak",
+    "take off": "havalanmak; (giysi) çıkarmak; hızla yükselmek",
+    "take on": "üstlenmek; işe almak",
+    "take over": "devralmak, ele geçirmek",
+    "take up": "(hobiye) başlamak; yer kaplamak",
+    "take back": "geri almak; sözünü geri almak",
+    "tear down": "yıkmak",
+    "throw away": "çöpe atmak, elden çıkarmak",
+    "throw out": "atmak; kovmak",
+    "try out": "denemek, sınamak",
+    "turn on": "açmak (ışık/cihaz)",
+    "turn off": "kapatmak (ışık/cihaz)",
+    "turn up": "ortaya çıkmak, çıkagelmek; (sesi) açmak",
+    "turn down": "reddetmek; (sesi) kısmak",
+    "turn out": "ortaya çıkmak, ... olduğu anlaşılmak",
+    "turn over": "ters çevirmek; devretmek; ciro yapmak",
+    "turn into": "-e dönüşmek, -e dönüştürmek",
+    "wake up": "uyanmak, uyandırmak",
+    "warm up": "ısınmak, ısıtmak",
+    "wear out": "eskitmek, eskimek; yormak",
+    "work out": "çözmek; spor yapmak; yolunda gitmek",
+    "wrap up": "tamamlamak, bitirmek; sarmak",
+    "write down": "not etmek, yazmak",
+    "write up": "kaleme almak, rapor haline getirmek",
+    "back off": "geri çekilmek, rahat bırakmak",
+    "blow up": "patlamak, patlatmak; şişirmek",
+    "calm down": "sakinleşmek, sakinleştirmek",
+    "carry off": "başarıyla üstesinden gelmek; alıp götürmek",
+    "catch up": "yetişmek, arayı kapatmak",
+    "clear up": "açıklığa kavuşturmak; (hava) açmak",
+    "close down": "(işyerini) kapatmak, kapanmak",
+    "count on": "güvenmek, bel bağlamak",
+    "draw up": "(belge) hazırlamak, kaleme almak",
+    "dry up": "kurumak, kuruyup tükenmek",
+    "figure out": "çözmek, anlamak, akıl erdirmek",
+    "hand back": "geri vermek",
+    "kick off": "başlamak, başlatmak",
+    "knock out": "nakavt etmek, bayıltmak; elemek",
+    "lay out": "sermek; düzenlemek, tasarlamak",
+    "leave out": "dışarıda bırakmak, atlamak",
+    "let in": "içeri almak",
+    "line up": "sıraya girmek, sıralamak; ayarlamak",
+    "look back": "geriye dönüp bakmak",
+    "map out": "ayrıntılı planlamak",
+    "open up": "açılmak; içini dökmek",
+    "pile up": "birikmek, yığılmak",
+    "play down": "önemsiz göstermek, hafife almak",
+    "point to": "işaret etmek, göstermek",
+    "push back": "geri itmek; karşı çıkmak; ertelemek",
+    "rule out": "olasılık dışı bırakmak, elemek",
+    "scale back": "küçültmek, azaltmak",
+    "screen out": "elemek, ayıklamak",
+    "set back": "geciktirmek, sekteye uğratmak",
+    "shake up": "sarsmak; köklü değişiklik yapmak",
+    "step up": "artırmak, hızlandırmak; öne çıkmak",
+    "stock up": "stok yapmak, depolamak",
+    "sum up": "özetlemek, toparlamak",
+    "team up": "güçlerini birleştirmek, takım kurmak",
+    "tie up": "bağlamak; meşgul etmek",
+    "tone down": "yumuşatmak, dozunu azaltmak",
+    "track down": "izini sürüp bulmak",
+    "use up": "tüketmek, bitirmek",
+    "weigh in": "görüş bildirmek, tartışmaya katılmak",
+    "win over": "(birini) kazanmak, ikna etmek",
+    "zoom in": "yakınlaştırmak",
+    "zoom out": "uzaklaştırmak"
+};
 
 let _phraseRegex = null;
 function getPhraseRegex() {
@@ -881,7 +1228,7 @@ async function fillKeywordSynonyms(word, tooltip) {
             }
             synonyms = [...set]
                 .filter(s => s && s.toLowerCase() !== lower)
-                .slice(0, 8);
+                .slice(0, 5);
         } catch (_) {}
     }
 
@@ -1056,6 +1403,12 @@ async function translateViaMyMemory(text) {
 async function fetchTurkishDict(text) {
     const key = String(text || "").toLowerCase().trim();
     if (!key) return { main: "", groups: [], alts: [] };
+
+    // Gömülü kalıp sözlüğü: internetsiz, anında ve her zaman çalışır
+    if (PHRASE_TR[key]) {
+        return { main: PHRASE_TR[key], groups: [], alts: [] };
+    }
+
     const cached = dictCache[key];
     if (cached && cached.data) return cached.data;
     if (cached && cached.promise) return cached.promise;
@@ -1115,6 +1468,7 @@ async function fetchTurkishDict(text) {
         if (main || groups.length || alts.length) {
             dictCache[key] = { data: result };
             if (main && !phraseCache[key]) phraseCache[key] = main; // cümle önbelleğiyle paylaş
+            saveTrCache();
         } else {
             delete dictCache[key]; // başarısız → sonraki dokunuşta yeniden dene
         }
@@ -1144,6 +1498,7 @@ function dictExtraTerms(d) {
 async function translateToTurkish(text) {
     const key = String(text || "").toLowerCase().trim();
     if (!key) return "";
+    if (PHRASE_TR[key]) return PHRASE_TR[key]; // gömülü kalıp sözlüğü
     const cached = phraseCache[key];
     if (typeof cached === "string") return cached;
     if (cached && cached.promise) return cached.promise;
@@ -1152,11 +1507,13 @@ async function translateToTurkish(text) {
         try {
             const tr = await translateViaGoogle(text);
             phraseCache[key] = tr;
+            saveTrCache();
             return tr;
         } catch (_) {}
         try {
             const tr = await translateViaMyMemory(text);
             phraseCache[key] = tr;
+            saveTrCache();
             return tr;
         } catch (_) {}
         delete phraseCache[key];
@@ -1256,15 +1613,20 @@ function showRichTooltip(spanElement, word, translation, meanings, trDict) {
             meaning.definitions.forEach((def, di) => {
                 meaningsHtml += `<div class="meaning-item">`;
                 meaningsHtml += `<div class="meaning-def">${di + 1}. ${def.definition}</div>`;
-                // Her İngilizce tanımın Türkçe karşılığı (parantez içinde)
-                const didx = defIndex++;
-                defsToTranslate.push({ idx: didx, text: def.definition });
-                meaningsHtml += `<div class="meaning-def-tr" data-deftr="${didx}">🔄 Türkçesi çevriliyor...</div>`;
+                // İlk birkaç tanımın Türkçe karşılığı çevrilir; hepsini çevirmek
+                // ücretsiz çeviri servisinin hız sınırına takılmaya yol açıyordu
+                if (defIndex < 4) {
+                    const didx = defIndex++;
+                    defsToTranslate.push({ idx: didx, text: def.definition });
+                    meaningsHtml += `<div class="meaning-def-tr" data-deftr="${didx}">🔄 Türkçesi çevriliyor...</div>`;
+                }
                 if (def.example) {
-                    const idx = exIndex++;
-                    examplesToTranslate.push({ idx: idx, text: def.example });
                     meaningsHtml += `<div class="meaning-example">💬 ${def.example}</div>`;
-                    meaningsHtml += `<div class="meaning-example-tr" data-extr="${idx}">🔄 Türkçesi çevriliyor...</div>`;
+                    if (exIndex < 3) {
+                        const idx = exIndex++;
+                        examplesToTranslate.push({ idx: idx, text: def.example });
+                        meaningsHtml += `<div class="meaning-example-tr" data-extr="${idx}">🔄 Türkçesi çevriliyor...</div>`;
+                    }
                     meaningsHtml += `<button class="example-btn" data-example="${encodeURIComponent(def.example)}" data-word="${word}">▶ Kartta Göster</button>`;
                 }
                 meaningsHtml += `</div>`;
