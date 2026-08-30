@@ -30,22 +30,25 @@ const TR_CACHE_MAX = 1500; // kayıt sınırı (localStorage şişmesin)
 })();
 
 let trCacheSaveTimer = null;
+function writeTrCacheNow() {
+    clearTimeout(trCacheSaveTimer);
+    try {
+        const phrases = {};
+        const dict = {};
+        let n = 0;
+        for (const k in phraseCache) {
+            if (typeof phraseCache[k] === "string" && n < TR_CACHE_MAX) { phrases[k] = phraseCache[k]; n++; }
+        }
+        for (const k in dictCache) {
+            if (dictCache[k] && dictCache[k].data && n < TR_CACHE_MAX) { dict[k] = dictCache[k].data; n++; }
+        }
+        localStorage.setItem(TR_CACHE_KEY, JSON.stringify({ phrases, dict }));
+    } catch (_) {} // depo doluysa sessizce vazgeç (bellek içi önbellek çalışmaya devam eder)
+}
+
 function saveTrCache() {
     clearTimeout(trCacheSaveTimer);
-    trCacheSaveTimer = setTimeout(() => {
-        try {
-            const phrases = {};
-            const dict = {};
-            let n = 0;
-            for (const k in phraseCache) {
-                if (typeof phraseCache[k] === "string" && n < TR_CACHE_MAX) { phrases[k] = phraseCache[k]; n++; }
-            }
-            for (const k in dictCache) {
-                if (dictCache[k] && dictCache[k].data && n < TR_CACHE_MAX) { dict[k] = dictCache[k].data; n++; }
-            }
-            localStorage.setItem(TR_CACHE_KEY, JSON.stringify({ phrases, dict }));
-        } catch (_) {} // depo doluysa sessizce vazgeç (bellek içi önbellek çalışmaya devam eder)
-    }, 800);
+    trCacheSaveTimer = setTimeout(writeTrCacheNow, 800);
 }
 
 // ——— Zamanlayıcılar ———
@@ -115,6 +118,7 @@ async function loadCards() {
                         ? `✅ ${cards.length} kelime (kayıtlı): ${savedName}`
                         : `✅ ${cards.length} kayıtlı kelime yüklendi`;
                 }
+                prefetchTranslations(); // eksik çevirileri arka planda indir
                 return;
             }
         } catch (err) {
@@ -126,6 +130,7 @@ async function loadCards() {
     cards = await response.json();
     restoreSavedIndex();
     loadVoices();
+    prefetchTranslations(); // eksik çevirileri arka planda indir
 }
 
 function deduplicateCards(arr) {
@@ -183,6 +188,7 @@ document.getElementById("file-input").addEventListener("change", function (e) {
                 ? ` (${uniqueCount - cards.length} tekrar temizlendi)`
                 : "";
             fileStatus.textContent = `✅ ${cards.length} benzersiz kelime yüklendi${dedupMsg}: ${file.name}`;
+            prefetchTranslations(); // yeni dosyanın çevirilerini arka planda indir
         } catch (err) {
             fileStatus.textContent = "❌ Dosya okunamadı: " + err.message;
         }
@@ -209,6 +215,7 @@ if (resetBtn) {
         showEnglish();
         const fileStatus = document.getElementById("file-status");
         if (fileStatus) fileStatus.textContent = "Henüz dosya yüklenmedi";
+        prefetchTranslations(); // varsayılan listenin çevirilerini arka planda indir
     });
 }
 
@@ -1477,6 +1484,89 @@ async function fetchTurkishDict(text) {
 
     dictCache[key] = { promise };
     return promise;
+}
+
+// =========================================================
+// ARKA PLANDA TOPLU ÇEVİRİ İNDİRME (ÖN YÜKLEME)
+// Excel yüklendiğinde / uygulama açıldığında kartlardaki tüm kelimelerin
+// Türkçe karşılıkları yavaş yavaş indirilip kalıcı hafızaya yazılır.
+// Böylece kelimelere dokunulduğunda internet olmasa bile anlam anında gelir.
+// =========================================================
+let prefetchToken = 0; // yeni dosya yüklenince önceki tur iptal edilsin diye
+
+function collectPrefetchWords() {
+    const seen = new Set();
+    const words = [];
+    for (const c of cards) {
+        const s = (c.sentence || c.english || "") + " " + (c.word || "");
+        const tokens = s.match(/[a-zA-Z][a-zA-Z'-]*/g) || [];
+        for (const t of tokens) {
+            const key = t.toLowerCase();
+            if (key.length < 2 || seen.has(key)) continue;
+            seen.add(key);
+            if (PHRASE_TR[key]) continue;                       // gömülü sözlükte zaten var
+            if (dictCache[key] && dictCache[key].data) continue; // kalıcı hafızada zaten var
+            words.push(key);
+        }
+    }
+    return words;
+}
+
+async function prefetchTranslations() {
+    const myToken = ++prefetchToken;
+
+    // Açılış/yükleme telaşı geçsin diye kısa bir gecikmeyle başla
+    await new Promise(r => setTimeout(r, 3000));
+    if (myToken !== prefetchToken) return;
+
+    const words = collectPrefetchWords();
+    if (words.length === 0) return;
+
+    const fileStatus = document.getElementById("file-status");
+    const originalStatus = fileStatus ? fileStatus.textContent : "";
+    let done = 0;
+    let failStreak = 0;
+
+    for (const w of words) {
+        if (myToken !== prefetchToken) return; // yeni dosya yüklendi → bu turu bırak
+        try {
+            const d = await fetchTurkishDict(w);
+            if (d.main || d.groups.length > 0 || d.alts.length > 0) {
+                failStreak = 0;
+            } else {
+                failStreak++;
+            }
+        } catch (_) {
+            failStreak++;
+        }
+        done++;
+
+        if (fileStatus && done % 10 === 0) {
+            fileStatus.textContent = `📥 Çeviriler hazırlanıyor: ${done}/${words.length}`;
+        }
+        if (done % 20 === 0) writeTrCacheNow(); // ara ara kalıcı hafızaya yaz
+
+        // Servis ulaşılamıyorsa boşuna zorlamayı bırak; kalan kelimeler
+        // bir sonraki açılışta (ya da yeni dosya yüklenince) denenir
+        if (failStreak >= 8) break;
+
+        // Ücretsiz servislerin hız sınırına takılmamak için istekler arasında bekle
+        await new Promise(r => setTimeout(r, 350));
+    }
+
+    writeTrCacheNow();
+    if (myToken !== prefetchToken || !fileStatus) return;
+
+    if (failStreak >= 8) {
+        fileStatus.textContent = originalStatus;
+    } else {
+        fileStatus.textContent = "✅ Çeviriler indirildi — kelimeler çevrimdışı da açılır";
+        setTimeout(() => {
+            if (myToken === prefetchToken && fileStatus.textContent.startsWith("✅ Çeviriler")) {
+                fileStatus.textContent = originalStatus;
+            }
+        }, 6000);
+    }
 }
 
 // ——— Sözlükteki ek karşılıkları tek listeye indir (ana karşılık hariç) ———
