@@ -1499,6 +1499,12 @@ function hasLetters(s) {
     return /[a-zA-ZçğıöşüÇĞİÖŞÜâîû]/.test(s || "");
 }
 
+// ——— Sağlayıcı sağlık takibi ———
+// Google bazı ağlarda (operatör/DNS) tamamen engelli olabiliyor; art arda
+// başarısız olursa sıranın sonuna atılır ki her dokunuş zaman aşımı beklemesin.
+let googleFailStreak = 0;
+function googleLooksDown() { return googleFailStreak >= 2; }
+
 // ——— Çeviri sağlayıcıları (sırayla denenir) ———
 async function translateViaGoogle(text) {
     const url = `https://translate.googleapis.com/translate_a/single?client=gtx&sl=en&tl=tr&dt=t&q=${encodeURIComponent(text)}`;
@@ -1508,6 +1514,23 @@ async function translateViaGoogle(text) {
     const translation = (data[0] || []).map(seg => seg && seg[0]).join("").trim();
     if (!hasLetters(translation)) throw new Error("google empty");
     return translation;
+}
+
+// Lingva: Google'a KENDİ sunucusu üzerinden erişen açık çeviri servisi.
+// Telefonun Google'a doğrudan erişemediği ağlarda da çalışır.
+const LINGVA_HOSTS = ["https://lingva.ml", "https://translate.plausibility.cloud"];
+async function translateViaLingva(text) {
+    for (const host of LINGVA_HOSTS) {
+        try {
+            const url = `${host}/api/v1/en/tr/${encodeURIComponent(text)}`;
+            const res = await fetchWithTimeout(url, null, 6000);
+            if (!res.ok) continue;
+            const data = await res.json();
+            const tr = ((data && data.translation) || "").trim();
+            if (hasLetters(tr)) return tr;
+        } catch (_) {}
+    }
+    throw new Error("lingva empty");
 }
 
 async function translateViaMyMemory(text) {
@@ -1556,28 +1579,46 @@ async function fetchTurkishDict(text, opts) {
         const groups = [];
         const alts = [];
 
-        // 1) Google: ana çeviri + tür bazında anlam listesi
-        try {
-            const url = `https://translate.googleapis.com/translate_a/single?client=gtx&sl=en&tl=tr&dt=t&dt=bd&q=${encodeURIComponent(text)}`;
-            const res = await fetchWithTimeout(url, null, 6000);
-            if (res.ok) {
-                const data = await res.json();
-                const m = (data[0] || []).map(seg => seg && seg[0]).join("").trim();
-                if (hasLetters(m)) main = m;
-                if (Array.isArray(data[1])) {
-                    for (const g of data[1]) {
-                        if (g && typeof g[0] === "string" && Array.isArray(g[1])) {
-                            const terms = g[1]
-                                .filter(t => typeof t === "string" && hasLetters(t))
-                                .slice(0, 6);
-                            if (terms.length) groups.push({ pos: g[0], terms });
+        // Google sözlük denemesi: ana çeviri + tür bazında anlam listesi
+        const tryGoogleDict = async () => {
+            try {
+                const url = `https://translate.googleapis.com/translate_a/single?client=gtx&sl=en&tl=tr&dt=t&dt=bd&q=${encodeURIComponent(text)}`;
+                const res = await fetchWithTimeout(url, null, 6000);
+                if (res.ok) {
+                    const data = await res.json();
+                    const m = (data[0] || []).map(seg => seg && seg[0]).join("").trim();
+                    if (hasLetters(m)) main = m;
+                    if (Array.isArray(data[1])) {
+                        for (const g of data[1]) {
+                            if (g && typeof g[0] === "string" && Array.isArray(g[1])) {
+                                const terms = g[1]
+                                    .filter(t => typeof t === "string" && hasLetters(t))
+                                    .slice(0, 6);
+                                if (terms.length) groups.push({ pos: g[0], terms });
+                            }
                         }
                     }
                 }
-            }
-        } catch (_) {}
+            } catch (_) {}
+            if (main || groups.length > 0) googleFailStreak = 0; else googleFailStreak++;
+        };
 
-        // 2) Ana çeviri ya da anlam listesi eksikse MyMemory'den tamamla
+        // 1) Google erişilebilir görünüyorsa önce onu dene
+        if (!googleLooksDown()) await tryGoogleDict();
+
+        // 2) Lingva: Google'a kendi sunucusu üzerinden erişir (Google'ın
+        //    telefondan engelli olduğu ağlarda da çalışır)
+        if (!main) {
+            try {
+                const tr = await translateViaLingva(text);
+                if (tr) main = tr;
+            } catch (_) {}
+        }
+
+        // 3) Google sıranın sonuna atıldıysa son çare olarak yine de dene
+        if (!main && googleLooksDown()) await tryGoogleDict();
+
+        // 4) Ana çeviri ya da anlam listesi hâlâ eksikse MyMemory'den tamamla
         if (!skipFallback && (!main || groups.length === 0)) {
             try {
                 const url = `https://api.mymemory.translated.net/get?q=${encodeURIComponent(text)}&langpair=en|tr`;
@@ -1808,18 +1849,28 @@ async function translateToTurkish(text) {
     if (cached && cached.promise) return cached.promise;
 
     const promise = (async () => {
-        try {
-            const tr = await translateViaGoogle(text);
+        const tryGoogle = async () => {
+            try {
+                const tr = await translateViaGoogle(text);
+                googleFailStreak = 0;
+                return tr;
+            } catch (_) {
+                googleFailStreak++;
+                return "";
+            }
+        };
+
+        let tr = "";
+        if (!googleLooksDown()) tr = await tryGoogle();
+        if (!tr) { try { tr = await translateViaLingva(text); } catch (_) {} }
+        if (!tr && googleLooksDown()) tr = await tryGoogle(); // sona atıldıysa yine de dene
+        if (!tr) { try { tr = await translateViaMyMemory(text); } catch (_) {} }
+
+        if (tr) {
             phraseCache[key] = tr;
             saveTrCache();
             return tr;
-        } catch (_) {}
-        try {
-            const tr = await translateViaMyMemory(text);
-            phraseCache[key] = tr;
-            saveTrCache();
-            return tr;
-        } catch (_) {}
+        }
         delete phraseCache[key];
         return "";
     })();
@@ -1957,6 +2008,14 @@ function showRichTooltip(spanElement, word, translation, meanings, trDict) {
     document.body.appendChild(tooltip);
     positionTooltip(tooltip, spanElement);
     wireTooltipCopy(tooltip, word);
+
+    // Hiçbir kaynak yanıt vermediyse balondan çıkmadan yeniden denenebilsin
+    const nothingFound = !translation
+        && (!meanings || meanings.length === 0)
+        && (!trDict || (trDict.groups.length === 0 && trDict.alts.length === 0));
+    if (nothingFound) {
+        addRetryButton(tooltip, () => showWordMeanings(word.toLowerCase(), word, spanElement));
+    }
 
     // Tanımların ve örneklerin Türkçesini SIRAYLA çevir (paralel istekler ücretsiz
     // çeviri servisinde hız sınırına takıldığı için teker teker yapılır)
