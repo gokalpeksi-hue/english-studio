@@ -5,6 +5,9 @@ let femaleVoice = null;
 let maleVoice = null;
 let autoSpeak = false; // otomatik seslendirme kapalı (sadece 🔊 butonuyla okur)
 
+// ——— Gömülü kelime sözlüğü (words-tr.js) — internetsiz kelime anlamları ———
+const WORD_TR = window.WORD_TR || {};
+
 // ——— Önbellekler ———
 const dictCache = {};   // İngilizce → {main, groups, alts} Türkçe sözlük karşılıkları
 const defCache = {};    // İngilizce → sözlük tanımları
@@ -1537,6 +1540,13 @@ async function fetchTurkishDict(text, opts) {
         return { main: PHRASE_TR[key], groups: [], alts: [] };
     }
 
+    // Gömülü kelime sözlüğü: en sık kullanılan kelimeler internetsiz
+    // (ilk karşılık ana anlam, kalanlar "diğer anlamlar")
+    if (WORD_TR[key]) {
+        const parts = WORD_TR[key].split(/\s*[,;]\s*/).filter(Boolean);
+        return { main: parts[0] || "", groups: [], alts: parts.slice(1) };
+    }
+
     const cached = dictCache[key];
     if (cached && cached.data) return cached.data;
     if (cached && cached.promise) return cached.promise;
@@ -1625,7 +1635,7 @@ function collectPrefetchWords() {
             const key = t.toLowerCase();
             if (key.length < 2 || seen.has(key)) continue;
             seen.add(key);
-            if (PHRASE_TR[key]) continue;                       // gömülü sözlükte zaten var
+            if (PHRASE_TR[key] || WORD_TR[key]) continue;        // gömülü sözlükte zaten var
             if (dictCache[key] && dictCache[key].data) continue; // kalıcı hafızada zaten var
             words.push(key);
         }
@@ -1713,6 +1723,7 @@ function wordByWordFromCache(text) {
         const k = t.toLowerCase();
         const d = dictCache[k] && dictCache[k].data;
         const tr = PHRASE_TR[k]
+            || WORD_TR[k]
             || (d && d.main)
             || (typeof phraseCache[k] === "string" ? phraseCache[k] : "");
         if (tr) parts.push({ en: t, tr });
