@@ -17,7 +17,7 @@
         aşağıdaki inline stiller devreye girer.
         (style.css ile bu blok aynı tutulmalıdır!)
     -->
-    <link rel="stylesheet" href="style.css?v=19">
+    <link rel="stylesheet" href="style.css?v=20">
     <style>
         /* =========================================================
            NOT: Bu CSS dosyasının bir kopyası index.html içine de
@@ -1031,6 +1031,41 @@
                 max-height: max(140px, calc(100dvh - 200px));
             }
         }
+
+        /* ——— Çeviri gelmeyince: tekrar dene butonu + kelime kelime yedek ——— */
+        .retry-btn {
+            display: inline-block;
+            background: #563df2;
+            color: #fff;
+            border: none;
+            border-radius: 8px;
+            padding: 7px 16px;
+            margin-top: 10px;
+            font-size: 12.5px;
+            font-weight: 700;
+            cursor: pointer;
+            transition: background 0.15s, transform 0.1s;
+            align-self: flex-start;
+        }
+
+        .retry-btn:hover {
+            background: #432dd6;
+        }
+
+        .retry-btn:active {
+            transform: scale(0.95);
+        }
+
+        .wbw-title {
+            font-size: 12px;
+            color: #9d8eff;
+            margin-bottom: 5px;
+        }
+
+        .wbw-item {
+            font-size: 14px;
+            line-height: 1.5;
+        }
     </style>
 
     <script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
@@ -1062,6 +1097,6 @@
         <button id="select-btn" class="nav-btn" title="Kelime grubu seçme modu: ilk ve son kelimeye dokunun">🖍</button>
     </div>
 
-    <script src="app.js?v=22"></script>
+    <script src="app.js?v=23"></script>
 </body>
 </html>

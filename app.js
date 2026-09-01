@@ -370,6 +370,7 @@ const PHRASES = [
     "cut down on", "drop out of", "stand up for", "face up to",
     "live up to", "get on with", "go back on", "fall back on",
     "keep away from", "look out for", "watch out for", "come down with",
+    "fall foul of", "fall foul",
     // İki kelimeli öbek fiiller
     "roll up", "roll back", "roll over", "back up", "back down",
     "break up", "break in", "break out", "break off", "break through",
@@ -539,6 +540,8 @@ const PHRASE_TR = {
     "look out for": "kollamak, gözetmek; dikkat etmek",
     "watch out for": "dikkat etmek, gözünü açmak",
     "come down with": "(hastalığa) yakalanmak",
+    "fall foul of": "-e ters düşmek, (kural/yasayla) başı derde girmek, -e takılmak",
+    "fall foul": "-e ters düşmek, başı derde girmek",
     // İki kelimeli öbek fiiller
     "roll up": "sarmak, kıvırmak; toplamak",
     "roll back": "geri çekmek, (fiyat) düşürmek",
@@ -1006,16 +1009,28 @@ function showSelectionTooltip(text, anchorEl) {
         if (!document.body.contains(tooltip)) return;
         const el = tooltip.querySelector('[data-seltr]');
         const altEl = tooltip.querySelector('[data-selalt]');
+
+        if (d.main) {
+            if (el) el.textContent = `🇹🇷 ${d.main}`;
+            const extras = dictExtraTerms(d);
+            if (altEl && extras.length > 0) {
+                altEl.hidden = false;
+                altEl.textContent = `Diğer karşılıklar: ${extras.join(", ")}`;
+            }
+            return;
+        }
+
+        // Çevrimiçi çeviri gelmedi → hafızadaki karşılıklarla kelime kelime göster
+        const parts = wordByWordFromCache(text);
         if (el) {
-            el.textContent = d.main
-                ? `🇹🇷 ${d.main}`
-                : "Çeviriye ulaşılamadı — tekrar deneyin";
+            if (parts.length > 0) {
+                el.innerHTML = '<div class="wbw-title">Bütünü çevrilemedi — hafızadan kelime kelime:</div>'
+                    + parts.map(p => `<div class="wbw-item">• <b>${p.en}</b>: ${p.tr}</div>`).join('');
+            } else {
+                el.textContent = "Çeviriye ulaşılamadı";
+            }
         }
-        const extras = dictExtraTerms(d);
-        if (altEl && extras.length > 0) {
-            altEl.hidden = false;
-            altEl.textContent = `Diğer karşılıklar: ${extras.join(", ")}`;
-        }
+        addRetryButton(tooltip, () => showSelectionTooltip(text, anchorEl));
     })();
 }
 
@@ -1150,12 +1165,15 @@ function showPhraseMeaning(phrase, spanElement) {
         if (el) {
             el.textContent = d.main
                 ? `🇹🇷 ${d.main}`
-                : 'Çeviriye ulaşılamadı — kalıba tekrar dokunarak yeniden deneyin';
+                : 'Çeviriye ulaşılamadı';
         }
         const extras = dictExtraTerms(d);
         if (altEl && extras.length > 0) {
             altEl.hidden = false;
             altEl.textContent = `Diğer karşılıklar: ${extras.join(", ")}`;
+        }
+        if (!d.main) {
+            addRetryButton(tooltip, () => showPhraseMeaning(phrase, spanElement));
         }
     })();
 }
@@ -1418,7 +1436,10 @@ async function showSimpleWordMeaning(lower, originalWord, spanElement) {
     if (el) {
         el.textContent = d.main
             ? `🇹🇷 ${d.main}`
-            : 'Çeviriye ulaşılamadı — kelimeye tekrar dokunarak yeniden deneyin';
+            : 'Çeviriye ulaşılamadı';
+    }
+    if (!d.main) {
+        addRetryButton(tooltip, () => showSimpleWordMeaning(lower, originalWord, spanElement));
     }
 }
 
@@ -1496,9 +1517,12 @@ async function translateViaMyMemory(text) {
 // boş kalırsa MyMemory'nin alternatif eşleşmeleri kullanılır.
 // Dönen değer: { main: "ana karşılık", groups: [{pos, terms[]}], alts: [] }
 // =========================================================
-async function fetchTurkishDict(text) {
+// opts.skipFallback: sadece Google denenir (arka plan ön yüklemesi MyMemory'nin
+// günlük kotasını tüketmesin diye — MyMemory elle dokunuşlara saklanır)
+async function fetchTurkishDict(text, opts) {
     const key = String(text || "").toLowerCase().trim();
     if (!key) return { main: "", groups: [], alts: [] };
+    const skipFallback = !!(opts && opts.skipFallback);
 
     // Gömülü kalıp sözlüğü: internetsiz, anında ve her zaman çalışır
     if (PHRASE_TR[key]) {
@@ -1536,7 +1560,7 @@ async function fetchTurkishDict(text) {
         } catch (_) {}
 
         // 2) Ana çeviri ya da anlam listesi eksikse MyMemory'den tamamla
-        if (!main || groups.length === 0) {
+        if (!skipFallback && (!main || groups.length === 0)) {
             try {
                 const url = `https://api.mymemory.translated.net/get?q=${encodeURIComponent(text)}&langpair=en|tr`;
                 const res = await fetchWithTimeout(url, null, 8000);
@@ -1619,7 +1643,8 @@ async function prefetchTranslations() {
     for (const w of words) {
         if (myToken !== prefetchToken) return; // yeni dosya yüklendi → bu turu bırak
         try {
-            const d = await fetchTurkishDict(w);
+            // Sadece Google: MyMemory'nin günlük kotası elle dokunuşlara kalsın
+            const d = await fetchTurkishDict(w, { skipFallback: true });
             if (d.main || d.groups.length > 0 || d.alts.length > 0) {
                 failStreak = 0;
             } else {
@@ -1640,7 +1665,7 @@ async function prefetchTranslations() {
         if (failStreak >= 8) break;
 
         // Ücretsiz servislerin hız sınırına takılmamak için istekler arasında bekle
-        await new Promise(r => setTimeout(r, 350));
+        await new Promise(r => setTimeout(r, 500));
     }
 
     writeTrCacheNow();
@@ -1656,6 +1681,35 @@ async function prefetchTranslations() {
             }
         }, 6000);
     }
+}
+
+// ——— Çeviri gelmeyince balona "🔄 Tekrar dene" butonu ekle ———
+function addRetryButton(tooltip, onRetry) {
+    if (tooltip.querySelector('.retry-btn')) return;
+    const host = tooltip.querySelector('.tooltip-meanings') || tooltip;
+    const btn = document.createElement('button');
+    btn.className = 'retry-btn';
+    btn.textContent = '🔄 Tekrar dene';
+    btn.addEventListener('click', function (e) {
+        e.stopPropagation();
+        onRetry();
+    });
+    host.appendChild(btn);
+}
+
+// ——— Çevrimiçi çeviri gelmezse: hafızadaki karşılıklarla kelime kelime çevir ———
+function wordByWordFromCache(text) {
+    const tokens = String(text || "").match(/[a-zA-Z][a-zA-Z'-]*/g) || [];
+    const parts = [];
+    for (const t of tokens) {
+        const k = t.toLowerCase();
+        const d = dictCache[k] && dictCache[k].data;
+        const tr = PHRASE_TR[k]
+            || (d && d.main)
+            || (typeof phraseCache[k] === "string" ? phraseCache[k] : "");
+        if (tr) parts.push({ en: t, tr });
+    }
+    return parts;
 }
 
 // ——— Sözlükteki ek karşılıkları tek listeye indir (ana karşılık hariç) ———
