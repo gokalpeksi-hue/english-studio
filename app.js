@@ -1434,9 +1434,17 @@ async function showSimpleWordMeaning(lower, originalWord, spanElement) {
     if (activeTooltipEl !== spanElement || !document.body.contains(tooltip)) return;
     const el = tooltip.querySelector('[data-simpletr]');
     if (el) {
-        el.textContent = d.main
-            ? `🇹🇷 ${d.main}`
-            : 'Çeviriye ulaşılamadı';
+        // Cümlede kullanılan anlamı bul: kartın Türkçe çevirisiyle eşleştir
+        const ctx = pickContextualMeaning(d, currentSentenceTurkish());
+        if (ctx && d.main && ctx.toLocaleLowerCase('tr') !== d.main.toLocaleLowerCase('tr')) {
+            el.innerHTML = `🎯 Bu cümlede: <b>${ctx}</b><div class="ctx-general">Genel karşılık: ${d.main}</div>`;
+        } else if (ctx) {
+            el.innerHTML = `🎯 Bu cümlede: <b>${ctx}</b>`;
+        } else if (d.main) {
+            el.textContent = `🇹🇷 ${d.main}`;
+        } else {
+            el.textContent = 'Çeviriye ulaşılamadı';
+        }
     }
     if (!d.main) {
         addRetryButton(tooltip, () => showSimpleWordMeaning(lower, originalWord, spanElement));
@@ -1712,6 +1720,58 @@ function wordByWordFromCache(text) {
     return parts;
 }
 
+// =========================================================
+// CÜMLEDEKİ ANLAMI BULMA (bağlamsal çeviri)
+// Kelimenin tüm aday Türkçe anlamları, kartın Türkçe çevirisiyle
+// eşleştirilir: cümlede hangi anlam kullanıldıysa çeviride onun kökü
+// geçer — eşleşen aday "Bu cümlede" olarak öne çıkarılır.
+// =========================================================
+const CTX_SKIP_WORDS = new Set([
+    "olmak", "etmek", "gelmek", "yapmak", "almak", "vermek", "kalmak",
+    "durmak", "bir", "şey", "ile", "gibi", "çok", "daha", "için", "veya"
+]);
+
+// Sözlük sonucundaki tüm aday anlamları tek listede topla
+function dictAllTerms(d) {
+    const out = [];
+    const seen = new Set();
+    const push = t => {
+        const k = String(t).toLocaleLowerCase('tr');
+        if (!seen.has(k)) { seen.add(k); out.push(t); }
+    };
+    if (d.main) push(d.main);
+    d.groups.forEach(g => g.terms.forEach(push));
+    d.alts.forEach(push);
+    return out;
+}
+
+// Adayların köklerini cümlenin Türkçe çevirisinde ara; en güçlü eşleşmeyi döndür
+function pickContextualMeaning(d, sentenceTr) {
+    if (!d || !sentenceTr) return null;
+    const trLower = String(sentenceTr).toLocaleLowerCase('tr');
+    let best = null;
+    let bestLen = 0;
+    for (const cand of dictAllTerms(d)) {
+        const words = cand.toLocaleLowerCase('tr').match(/[a-zçğıöşüâîû]+/g) || [];
+        for (const w of words) {
+            if (w.length < 3 || CTX_SKIP_WORDS.has(w)) continue;
+            // Türkçe eklerden etkilenmemek için kaba kök: kelimenin ~%60'ı (en az 4 harf)
+            const stem = w.slice(0, Math.min(w.length, Math.max(4, Math.ceil(w.length * 0.6))));
+            if (stem.length >= 3 && trLower.includes(stem) && stem.length > bestLen) {
+                best = cand;
+                bestLen = stem.length;
+            }
+        }
+    }
+    return best;
+}
+
+// Geçerli kartın Türkçe çevirisi (bağlam eşleştirmesi için)
+function currentSentenceTurkish() {
+    const c = cards[currentIndex];
+    return (c && c.turkish) || "";
+}
+
 // ——— Sözlükteki ek karşılıkları tek listeye indir (ana karşılık hariç) ———
 function dictExtraTerms(d) {
     const seen = new Set([(d.main || "").toLowerCase()]);
@@ -1823,6 +1883,13 @@ function showRichTooltip(spanElement, word, translation, meanings, trDict) {
     if (trDict && (trDict.groups.length > 0 || trDict.alts.length > 0)) {
         meaningsHtml += `<div class="meaning-group">`;
         meaningsHtml += `<div class="meaning-pos">🇹🇷 TÜRKÇE ANLAMLARI</div>`;
+        // Cümlede kullanılan anlam en üstte vurgulanır
+        const ctxPick = pickContextualMeaning(trDict, currentSentenceTurkish());
+        if (ctxPick) {
+            meaningsHtml += `<div class="meaning-item ctx-pick">
+<div class="meaning-def">🎯 <b>Bu cümlede:</b> ${ctxPick}</div>
+</div>`;
+        }
         if (trDict.groups.length > 0) {
             trDict.groups.forEach(g => {
                 meaningsHtml += `<div class="meaning-item">
