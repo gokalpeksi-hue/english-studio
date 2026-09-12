@@ -780,21 +780,47 @@ function tokenizeSegmentHighlight(text, word) {
 }
 
 // =========================================================
-// ANA EKRAN – İNGİLİZCE CÜMLE + ANAHTAR KELİME VURGULU
+// KART YÖNÜ TERCİHİ — EN→TR (önce İngilizce) / TR→EN (önce Türkçe)
 // =========================================================
-function showEnglish() {
-    showingTurkish = false;
-    const card = document.getElementById("card");
-    hideTooltip();
-    clearTimers();
-    selAnchorIdx = null; // kart yeniden çiziliyor → yarım kalan seçim iptal
-    selEndIdx = null;
+const DIRECTION_KEY = "kelimeKarti_direction";
+let direction = "en-tr";
+try {
+    if (localStorage.getItem(DIRECTION_KEY) === "tr-en") direction = "tr-en";
+} catch (_) {}
 
-    if (isShowingExample) {
-        showOriginalCard();
-        return;
-    }
+function updateDirButtons() {
+    const en = document.getElementById("dirEnTr");
+    const tr = document.getElementById("dirTrEn");
+    if (en) en.classList.toggle("active", direction === "en-tr");
+    if (tr) tr.classList.toggle("active", direction === "tr-en");
+}
 
+function setDirection(dir) {
+    if (direction === dir) return;
+    direction = dir;
+    try { localStorage.setItem(DIRECTION_KEY, dir); } catch (_) {}
+    updateDirButtons();
+    isShowingExample = false;
+    showEnglish(); // geçerli kartı yeni yönün ön yüzüyle çiz
+    showToast(dir === "tr-en"
+        ? "🇹🇷→🇬🇧 Önce Türkçe: karta dokununca İngilizcesi açılır"
+        : "🇬🇧→🇹🇷 Önce İngilizce: karta dokununca Türkçesi açılır");
+}
+
+document.getElementById("dirEnTr")?.addEventListener("click", function (e) {
+    e.stopPropagation();
+    setDirection("en-tr");
+});
+document.getElementById("dirTrEn")?.addEventListener("click", function (e) {
+    e.stopPropagation();
+    setDirection("tr-en");
+});
+updateDirButtons();
+
+// =========================================================
+// KART YÜZLERİ – İngilizce (tıklanabilir kelimeli) / Türkçe (düz metin)
+// =========================================================
+function renderEnglishFace(card) {
     const cardData = cards[currentIndex];
     const sentence = cardData.sentence || cardData.english || '';
     const keyWord = cardData.word || '';
@@ -808,6 +834,32 @@ function showEnglish() {
     attachWordListeners(card);
 
     speakEnglish(sentence);
+}
+
+function renderTurkishFace(card) {
+    const cardData = cards[currentIndex];
+    card.innerHTML = `<p>${cardData.turkish || ''}</p>`;
+}
+
+// Ön yüzü göster (yön tercihine göre İngilizce ya da Türkçe)
+function showEnglish() {
+    showingTurkish = false;
+    const card = document.getElementById("card");
+    hideTooltip();
+    clearTimers();
+    selAnchorIdx = null; // kart yeniden çiziliyor → yarım kalan seçim iptal
+    selEndIdx = null;
+
+    if (isShowingExample) {
+        showOriginalCard();
+        return;
+    }
+
+    if (direction === "tr-en") {
+        renderTurkishFace(card);
+    } else {
+        renderEnglishFace(card);
+    }
     updateCounter();
     saveCurrentIndex();   // kaldığımız kartı hafızaya yaz
 }
@@ -1181,6 +1233,7 @@ function showPhraseMeaning(phrase, spanElement) {
     })();
 }
 
+// Arka yüzü göster (yön tercihine göre Türkçe ya da İngilizce)
 function showTurkish() {
     window.speechSynthesis.cancel();
     showingTurkish = true;
@@ -1190,10 +1243,11 @@ function showTurkish() {
     selAnchorIdx = null;
     selEndIdx = null;
 
-    const cardData = cards[currentIndex];
-    const turkishText = cardData.turkish || '';
-
-    card.innerHTML = `<p>${turkishText}</p>`;
+    if (direction === "tr-en") {
+        renderEnglishFace(card); // TR→EN modunda arka yüz: tıklanabilir İngilizce cümle
+    } else {
+        renderTurkishFace(card);
+    }
 }
 
 // =========================================================
