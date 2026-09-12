@@ -17,7 +17,7 @@
         aşağıdaki inline stiller devreye girer.
         (style.css ile bu blok aynı tutulmalıdır!)
     -->
-    <link rel="stylesheet" href="style.css?v=21">
+    <link rel="stylesheet" href="style.css?v=22">
     <style>
         /* =========================================================
            NOT: Bu CSS dosyasının bir kopyası index.html içine de
@@ -1081,6 +1081,45 @@
             border-radius: 0 6px 6px 0;
             padding: 5px 8px 5px 12px;
         }
+
+        /* =============================================
+           KART YÖNÜ TERCİHİ (EN→TR / TR→EN)
+           ============================================= */
+        .dir-toggle {
+            display: flex;
+            border: 2px solid #563df2;
+            border-radius: 10px;
+            overflow: hidden;
+        }
+
+        .dir-btn {
+            border: none;
+            background: #fff;
+            color: #563df2;
+            font: inherit;
+            font-size: 13px;
+            font-weight: 700;
+            padding: 8px 12px;
+            cursor: pointer;
+            transition: background 0.15s, color 0.15s;
+            white-space: nowrap;
+        }
+
+        .dir-btn + .dir-btn {
+            border-left: 2px solid #563df2;
+        }
+
+        .dir-btn.active {
+            background: #563df2;
+            color: #fff;
+        }
+
+        @media (max-width: 400px) {
+            .dir-btn {
+                font-size: 11.5px;
+                padding: 7px 9px;
+            }
+        }
     </style>
 
     <script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
@@ -1091,6 +1130,10 @@
         <label for="file-input" class="upload-btn">📂 Excel / CSV Yükle</label>
         <input type="file" id="file-input" accept=".xlsx,.xls,.csv">
         <button id="reset-btn" class="reset-btn" title="Yüklenen dosyayı sil, varsayılan listeye dön">🗑 Sıfırla</button>
+        <div class="dir-toggle" title="Kart yönü: hangi dil önce gösterilsin?">
+            <button id="dirEnTr" class="dir-btn" title="Önce İngilizce, dokununca Türkçesi">🇬🇧 EN → TR</button>
+            <button id="dirTrEn" class="dir-btn" title="Önce Türkçe, dokununca İngilizcesi">🇹🇷 TR → EN</button>
+        </div>
         <span id="file-status">Henüz dosya yüklenmedi</span>
     </div>
 
@@ -1113,6 +1156,6 @@
     </div>
 
     <script src="words-tr.js?v=2"></script>
-    <script src="app.js?v=26"></script>
+    <script src="app.js?v=27"></script>
 </body>
 </html>

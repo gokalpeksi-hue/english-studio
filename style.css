@@ -1044,3 +1044,42 @@ body {
     border-radius: 0 6px 6px 0;
     padding: 5px 8px 5px 12px;
 }
+
+/* =============================================
+   KART YÖNÜ TERCİHİ (EN→TR / TR→EN)
+   ============================================= */
+.dir-toggle {
+    display: flex;
+    border: 2px solid #563df2;
+    border-radius: 10px;
+    overflow: hidden;
+}
+
+.dir-btn {
+    border: none;
+    background: #fff;
+    color: #563df2;
+    font: inherit;
+    font-size: 13px;
+    font-weight: 700;
+    padding: 8px 12px;
+    cursor: pointer;
+    transition: background 0.15s, color 0.15s;
+    white-space: nowrap;
+}
+
+.dir-btn + .dir-btn {
+    border-left: 2px solid #563df2;
+}
+
+.dir-btn.active {
+    background: #563df2;
+    color: #fff;
+}
+
+@media (max-width: 400px) {
+    .dir-btn {
+        font-size: 11.5px;
+        padding: 7px 9px;
+    }
+}
